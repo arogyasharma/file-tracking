@@ -107,32 +107,34 @@ async function initializeSettings() {
     }
 }
 
-// Initialize settings on startup
-initializeSettings();
-
-// Function to clean up old records without required fields
-async function cleanupOldRecords() {
-    try {
-        // Delete files that don't have fileNumber or serialNumber
-        const result = await File.deleteMany({
-            $or: [
-                { fileNumber: { $exists: false } },
-                { serialNumber: { $exists: false } },
-                { fileNumber: null },
-                { serialNumber: null }
-            ]
-        });
-        
-        if (result.deletedCount > 0) {
-            console.log(`Cleaned up ${result.deletedCount} old file records without required fields`);
+// Initialize settings on startup (only in non-serverless environment)
+if (process.env.NODE_ENV !== 'production') {
+    initializeSettings();
+    
+    // Function to clean up old records without required fields
+    async function cleanupOldRecords() {
+        try {
+            // Delete files that don't have fileNumber or serialNumber
+            const result = await File.deleteMany({
+                $or: [
+                    { fileNumber: { $exists: false } },
+                    { serialNumber: { $exists: false } },
+                    { fileNumber: null },
+                    { serialNumber: null }
+                ]
+            });
+            
+            if (result.deletedCount > 0) {
+                console.log(`Cleaned up ${result.deletedCount} old file records without required fields`);
+            }
+        } catch (error) {
+            console.error('Error cleaning up old records:', error);
         }
-    } catch (error) {
-        console.error('Error cleaning up old records:', error);
     }
+    
+    // Clean up old records on startup
+    cleanupOldRecords();
 }
-
-// Clean up old records on startup
-cleanupOldRecords();
 
 // Function to generate serial number
 async function generateSerialNumber() {
