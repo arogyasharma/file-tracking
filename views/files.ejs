@@ -1,0 +1,62 @@
+<%- include('partials/header') %>
+
+<h2>All Files</h2>
+
+<div class="card mb-4">
+    <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">File List</h5>
+        <a href="/" class="btn btn-light btn-sm">Create New File</a>
+    </div>
+    <div class="card-body">
+        <% if (files && files.length > 0) { %>
+            <div class="table-responsive">
+                <table class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>File Number</th>
+                            <th>Serial Number</th>
+                            <th>Name</th>
+                            <th>Department</th>
+                            <th>Current Location</th>
+                            <th>Status</th>
+                            <th>Created</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <% files.forEach(file => { %>
+                            <tr>
+                                <td><strong><%= file.fileNumber || 'N/A' %></strong></td>
+                                <td><span class="badge badge-secondary"><%= file.serialNumber || 'N/A' %></span></td>
+                                <td><%= file.fileName %></td>
+                                <td><%= file.department %></td>
+                                <td><%= file.currentLocation %></td>
+                                <td>
+                                    <span class="badge badge-<%= 
+                                        file.status === 'Active' ? 'success' : 
+                                        file.status === 'Pending' ? 'warning' : 
+                                        file.status === 'In Review' ? 'info' : 
+                                        file.status === 'Completed' ? 'primary' : 
+                                        'secondary' 
+                                    %>">
+                                        <%= file.status %>
+                                    </span>
+                                </td>
+                                <td><%= new Date(file.createdAt).toLocaleDateString() %></td>
+                                <td>
+                                    <a href="/file/<%= file.fileId %>" class="btn btn-sm btn-info">View</a>
+                                </td>
+                            </tr>
+                        <% }); %>
+                    </tbody>
+                </table>
+            </div>
+        <% } else { %>
+            <div class="alert alert-info">
+                No files found. <a href="/">Create your first file</a>.
+            </div>
+        <% } %>
+    </div>
+</div>
+
+<%- include('partials/footer') %>

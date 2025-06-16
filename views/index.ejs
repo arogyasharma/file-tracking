@@ -1,0 +1,107 @@
+<%- include('partials/header') %>
+
+<div class="jumbotron">
+    <h1 class="display-4">File Tracking System</h1>
+    <p class="lead">Track physical files with QR codes for easy management and status updates.</p>
+    <hr class="my-4">
+    <p>Create a new file entry, print QR codes, and scan to update file status and location.</p>
+    <a class="btn btn-primary btn-lg" href="#newFileForm" role="button">Create New File</a>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header bg-info text-white">
+        <h5 class="mb-0">Track a File by ID</h5>
+    </div>
+    <div class="card-body">
+        <form action="/search" method="GET" class="form-inline justify-content-center">
+            <div class="input-group" style="width: 100%; max-width: 600px;">
+                <input type="text" name="fileId" class="form-control" placeholder="Enter File ID, File Number, or Serial Number" required>
+                <div class="input-group-append">
+                    <button type="submit" class="btn btn-info">
+                        <i class="fa fa-search"></i> Track File
+                    </button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0">Create New File</h5>
+            </div>
+            <div class="card-body">
+                <form id="newFileForm" action="/files" method="POST">
+                    <div class="form-group">
+                        <label for="fileNumber">File Number*</label>
+                        <input type="text" class="form-control" id="fileNumber" name="fileNumber" placeholder="e.g., DOC-2024-001, REP-001, etc." required>
+                        <small class="form-text text-muted">Enter your organization's file number or reference code</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="fileName">File Name*</label>
+                        <input type="text" class="form-control" id="fileName" name="fileName" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="description">Description</label>
+                        <textarea class="form-control" id="description" name="description" rows="3"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label for="department">Department*</label>
+                        <input type="text" class="form-control" id="department" name="department" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="owner">Owner/Handler*</label>
+                        <input type="text" class="form-control" id="owner" name="owner" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="currentLocation">Current Location*</label>
+                        <input type="text" class="form-control" id="currentLocation" name="currentLocation" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="status">Status</label>
+                        <select class="form-control" id="status" name="status">
+                            <option value="Active">Active</option>
+                            <option value="Pending">Pending</option>
+                            <option value="In Review">In Review</option>
+                            <option value="Archived">Archived</option>
+                            <option value="Completed">Completed</option>
+                        </select>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Create File & Generate QR Code</button>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header bg-success text-white">
+                <h5 class="mb-0">How It Works</h5>
+            </div>
+            <div class="card-body">
+                <ol class="mb-0">
+                    <li class="mb-2">Create a new file entry with all relevant information</li>
+                    <li class="mb-2">Print the generated QR code and attach it to your physical file</li>
+                    <li class="mb-2">Scan the QR code whenever the file changes location or status</li>
+                    <li class="mb-2">Update the file's information through the web interface</li>
+                    <li class="mb-2">Track the complete history of each file in the system</li>
+                </ol>
+            </div>
+        </div>
+        
+        <div class="card mt-4">
+            <div class="card-header bg-info text-white">
+                <h5 class="mb-0">Quick Links</h5>
+            </div>
+            <div class="card-body">
+                <div class="list-group">
+                    <a href="/files" class="list-group-item list-group-item-action">View All Files</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<%- include('partials/footer') %>

@@ -1,0 +1,16 @@
+<%- include('partials/header') %>
+
+<div class="alert alert-danger">
+    <h4 class="alert-heading">Error!</h4>
+    <p><%= message || 'An unexpected error occurred.' %></p>
+    <hr>
+    <p class="mb-0">Please try again or contact the system administrator.</p>
+</div>
+
+<div class="text-center mt-4">
+    <a href="<%= typeof backLink !== 'undefined' ? backLink : '/' %>" class="btn btn-primary">
+        Return to <%= (typeof backLink !== 'undefined' && backLink !== '/') ? 'Previous Page' : 'Home' %>
+    </a>
+</div>
+
+<%- include('partials/footer') %>

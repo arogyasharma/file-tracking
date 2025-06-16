@@ -1,0 +1,86 @@
+<%- include('partials/header') %>
+
+<div class="card">
+    <div class="card-header bg-success text-white">
+        <h5 class="mb-0">QR Code Generated Successfully</h5>
+    </div>
+    <div class="card-body text-center">
+        <h4 class="card-title">File: <%= fileName %></h4>
+        <div class="row justify-content-center">
+            <div class="col-md-8">
+                <table class="table table-bordered mb-4">
+                    <tr>
+                        <th class="bg-light">File Number:</th>
+                        <td><strong><%= fileNumber %></strong></td>
+                    </tr>
+                    <tr>
+                        <th class="bg-light">Serial Number:</th>
+                        <td><span class="badge badge-primary"><%= serialNumber %></span></td>
+                    </tr>
+                    <tr>
+                        <th class="bg-light">System ID:</th>
+                        <td><small class="text-muted"><%= fileId %></small></td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+        
+        <div class="qr-container my-4">
+            <img src="<%= qrImage %>" alt="QR Code" class="img-fluid" style="max-width: 300px;">
+            <div class="mt-2">
+                <small class="text-muted">Serial: <%= serialNumber %></small>
+            </div>
+        </div>
+        
+        <p class="card-text">Scan this QR code to access and update the file's information.</p>
+        
+        <div class="btn-group mt-3">
+            <button class="btn btn-primary" onclick="window.print()">Print QR Code</button>
+            <a href="/files" class="btn btn-secondary">View All Files</a>
+            <a href="/" class="btn btn-outline-primary">Create Another File</a>
+        </div>
+    </div>
+</div>
+
+<div class="card mt-4 instructions-card">
+    <div class="card-header bg-info text-white">
+        <h5 class="mb-0">Instructions</h5>
+    </div>
+    <div class="card-body">
+        <ol>
+            <li>Print this QR code and attach it to your physical file.</li>
+            <li>When the file moves to a new location or changes status, scan the QR code.</li>
+            <li>Update the file's information through the web interface that appears.</li>
+            <li>The system will maintain a complete history of all changes.</li>
+        </ol>
+    </div>
+</div>
+
+<style>
+    @media print {
+        .navbar, .footer, .btn-group, .card-header, .instructions-card {
+            display: none !important;
+        }
+        
+        .card {
+            border: none !important;
+            box-shadow: none !important;
+        }
+        
+        .qr-container {
+            page-break-inside: avoid;
+        }
+        
+        .table {
+            font-size: 14px;
+        }
+        
+        .badge {
+            border: 1px solid #000;
+            color: #000 !important;
+            background-color: transparent !important;
+        }
+    }
+</style>
+
+<%- include('partials/footer') %>

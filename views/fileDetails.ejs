@@ -1,0 +1,242 @@
+<%- include('partials/header') %>
+
+<div class="row">
+    <div class="col-md-8">
+        <div class="card mb-4">
+            <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">File Details</h5>
+                <a href="/files" class="btn btn-light btn-sm">Back to All Files</a>
+            </div>
+            <div class="card-body">
+                <h3><%= file.fileName %></h3>
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <p class="mb-1"><strong>File Number:</strong> 
+                            <% if (file.fileNumber) { %>
+                                <span class="text-primary"><%= file.fileNumber %></span>
+                            <% } else { %>
+                                <span class="text-muted">Not assigned</span>
+                            <% } %>
+                        </p>
+                    </div>
+                    <div class="col-md-6">
+                        <p class="mb-1"><strong>Serial Number:</strong> 
+                            <% if (file.serialNumber) { %>
+                                <span class="badge badge-info"><%= file.serialNumber %></span>
+                            <% } else { %>
+                                <span class="text-muted">Not assigned</span>
+                            <% } %>
+                        </p>
+                    </div>
+                </div>
+                <p class="text-muted small">System ID: <%= file.fileId %></p>
+                
+                <div class="row mt-4">
+                    <div class="col-md-6">
+                        <h5>Basic Information</h5>
+                        <table class="table table-bordered">
+                            <tr>
+                                <th>File Number</th>
+                                <td>
+                                    <% if (file.fileNumber) { %>
+                                        <strong><%= file.fileNumber %></strong>
+                                    <% } else { %>
+                                        <span class="text-muted">Not assigned</span>
+                                    <% } %>
+                                </td>
+                            </tr>
+                            <tr>
+                                <th>Serial Number</th>
+                                <td>
+                                    <% if (file.serialNumber) { %>
+                                        <span class="badge badge-info"><%= file.serialNumber %></span>
+                                    <% } else { %>
+                                        <span class="text-muted">Not assigned</span>
+                                    <% } %>
+                                </td>
+                            </tr>
+                            <tr>
+                                <th>Department</th>
+                                <td><%= file.department %></td>
+                            </tr>
+                            <tr>
+                                <th>Owner</th>
+                                <td><%= file.owner %></td>
+                            </tr>
+                            <tr>
+                                <th>Current Location</th>
+                                <td><%= file.currentLocation %></td>
+                            </tr>
+                            <tr>
+                                <th>Status</th>
+                                <td>
+                                    <span class="badge badge-<%= 
+                                        file.status === 'Active' ? 'success' : 
+                                        file.status === 'Pending' ? 'warning' : 
+                                        file.status === 'In Review' ? 'info' : 
+                                        file.status === 'Completed' ? 'primary' : 
+                                        'secondary' 
+                                    %>">
+                                        <%= file.status %>
+                                    </span>
+                                </td>
+                            </tr>
+                            <tr>
+                                <th>Created</th>
+                                <td><%= new Date(file.createdAt).toLocaleString() %></td>
+                            </tr>
+                        </table>
+                    </div>
+                    <div class="col-md-6">
+                        <h5>Description</h5>
+                        <p><%= file.description || 'No description provided' %></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card mb-4">
+            <div class="card-header bg-info text-white">
+                <h5 class="mb-0">File History</h5>
+            </div>
+            <div class="card-body">
+                <div class="timeline">
+                    <% if (file.history && file.history.length > 0) { %>
+                        <% file.history.slice().reverse().forEach((entry, index) => { %>
+                            <div class="timeline-item">
+                                <div class="timeline-marker <%= index === 0 ? 'bg-success' : 'bg-primary' %>"></div>
+                                <div class="timeline-content">
+                                    <h6 class="mb-1"><%= new Date(entry.timestamp).toLocaleString() %></h6>
+                                    <p class="mb-1">
+                                        <strong>Status:</strong> <%= entry.status %> | 
+                                        <strong>Location:</strong> <%= entry.location %> | 
+                                        <strong>Handler:</strong> <%= entry.handler %>
+                                    </p>
+                                    <% if (entry.notes) { %>
+                                        <p class="text-muted mb-0"><small><%= entry.notes %></small></p>
+                                    <% } %>
+                                </div>
+                            </div>
+                        <% }); %>
+                    <% } else { %>
+                        <p>No history available for this file.</p>
+                    <% } %>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <% if (allowStatusChange) { %>
+        <div class="card mb-4">
+            <div class="card-header bg-success text-white">
+                <h5 class="mb-0">Update File Status</h5>
+            </div>
+            <div class="card-body">
+                <form action="/file/<%= file.fileId %>/update" method="POST">
+                    <div class="form-group">
+                        <label for="status">New Status</label>
+                        <select class="form-control" id="status" name="status" required>
+                            <option value="Active" <%= file.status === 'Active' ? 'selected' : '' %>>Active</option>
+                            <option value="Pending" <%= file.status === 'Pending' ? 'selected' : '' %>>Pending</option>
+                            <option value="In Review" <%= file.status === 'In Review' ? 'selected' : '' %>>In Review</option>
+                            <option value="Archived" <%= file.status === 'Archived' ? 'selected' : '' %>>Archived</option>
+                            <option value="Completed" <%= file.status === 'Completed' ? 'selected' : '' %>>Completed</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="location">Current Location</label>
+                        <input type="text" class="form-control" id="location" name="location" value="<%= file.currentLocation %>" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="handler">Current Handler</label>
+                        <input type="text" class="form-control" id="handler" name="handler" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="notes">Notes</label>
+                        <textarea class="form-control" id="notes" name="notes" rows="3"></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-success btn-block">Update File</button>
+                </form>
+            </div>
+        </div>
+        <% } else { %>
+        <div class="card mb-4">
+            <div class="card-header bg-warning text-dark">
+                <h5 class="mb-0">Status Updates Disabled</h5>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-warning" role="alert">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    Status updates via QR code scanning are currently disabled by the administrator.
+                </div>
+                <p class="text-muted">
+                    If you need to update this file's status, please contact your system administrator or use the main file management interface.
+                </p>
+            </div>
+        </div>
+        <% } %>
+        
+        <div class="card">
+            <div class="card-header bg-secondary text-white">
+                <h5 class="mb-0">QR Code</h5>
+            </div>
+            <div class="card-body text-center">
+                <div id="qrcode" class="mb-3"></div>
+                <button class="btn btn-primary btn-sm" onclick="window.print()">Print QR Code</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/qrcode.js/qrcode.min.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const qrContainer = document.getElementById('qrcode');
+        const fileUrl = window.location.href;
+        
+        // Generate QR code
+        new QRCode(qrContainer, {
+            text: fileUrl,
+            width: 200,
+            height: 200
+        });
+    });
+</script>
+
+<style>
+    .timeline {
+        position: relative;
+        padding-left: 30px;
+    }
+    
+    .timeline-item {
+        position: relative;
+        margin-bottom: 20px;
+    }
+    
+    .timeline-marker {
+        position: absolute;
+        left: -30px;
+        width: 15px;
+        height: 15px;
+        border-radius: 50%;
+    }
+    
+    .timeline-content {
+        padding-bottom: 15px;
+        border-bottom: 1px solid #eee;
+    }
+    
+    @media print {
+        .navbar, .footer, form, .btn, .card-header {
+            display: none;
+        }
+        
+        #qrcode {
+            margin: 0 auto;
+        }
+    }
+</style>
+
+<%- include('partials/footer') %>
