@@ -1,14 +1,3 @@
 {
-  "version": 2,
-  "functions": {
-    "api/simple.js": {
-      "maxDuration": 10
-    },
-    "api/db-test.js": {
-      "maxDuration": 15
-    },
-    "api/express-test.js": {
-      "maxDuration": 15
-    }
-  }
+  "version": 2
 }
