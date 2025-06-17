@@ -56,17 +56,14 @@
                                 </td>
                             </tr>
                             <tr>
-                                <th>Department</th>
-                                <td><%= file.department %></td>
+                                <th>Section</th>
+                                <td><%= file.section || 'Not specified' %></td>
                             </tr>
                             <tr>
                                 <th>Owner</th>
                                 <td><%= file.owner %></td>
                             </tr>
-                            <tr>
-                                <th>Current Location</th>
-                                <td><%= file.currentLocation %></td>
-                            </tr>
+                          
                             <tr>
                                 <th>Status</th>
                                 <td>
@@ -82,8 +79,22 @@
                                 </td>
                             </tr>
                             <tr>
-                                <th>Created</th>
-                                <td><%= new Date(file.createdAt).toLocaleString() %></td>
+                                <th>Created Date</th>
+                                <td><%= new Date(file.createdAt).toLocaleDateString() %></td>
+                            </tr>
+                            <tr>
+                                <th>Created Time</th>
+                                <td><%= new Date(file.createdAt).toLocaleTimeString() %></td>
+                            </tr>
+                            <tr>
+                                <th>Last Updated</th>
+                                <td>
+                                    <% if (file.history && file.history.length > 0) { %>
+                                        <%= new Date(file.history[file.history.length - 1].timestamp).toLocaleString() %>
+                                    <% } else { %>
+                                        <%= new Date(file.createdAt).toLocaleString() %>
+                                    <% } %>
+                                </td>
                             </tr>
                         </table>
                     </div>
@@ -106,14 +117,33 @@
                             <div class="timeline-item">
                                 <div class="timeline-marker <%= index === 0 ? 'bg-success' : 'bg-primary' %>"></div>
                                 <div class="timeline-content">
-                                    <h6 class="mb-1"><%= new Date(entry.timestamp).toLocaleString() %></h6>
+                                    <h6 class="mb-1">
+                                        <%= new Date(entry.timestamp).toLocaleDateString() %> at 
+                                        <%= new Date(entry.timestamp).toLocaleTimeString() %>
+                                    </h6>
                                     <p class="mb-1">
                                         <strong>Status:</strong> <%= entry.status %> | 
-                                        <strong>Location:</strong> <%= entry.location %> | 
+                                        <strong>Location:</strong> <%= entry.location || 'Not specified' %> | 
                                         <strong>Handler:</strong> <%= entry.handler %>
                                     </p>
+                                    <% if (entry.fromSection || entry.toSection) { %>
+                                        <p class="mb-1 text-info">
+                                            <% if (entry.fromSection && entry.toSection) { %>
+                                                <strong>Transfer:</strong> <%= entry.fromSection %> → <%= entry.toSection %>
+                                                <% if (entry.fromOfficialName) { %>
+                                                    <br><small><strong>From:</strong> <%= entry.fromOfficialName %> 
+                                                    <% if (entry.fromLocation && entry.fromLocation !== entry.fromSection) { %>(<%= entry.fromLocation %>)<% } %></small>
+                                                <% } %>
+                                            <% } else if (entry.fromSection) { %>
+                                                <strong>From Section:</strong> <%= entry.fromSection %>
+                                                <% if (entry.fromOfficialName) { %> - <%= entry.fromOfficialName %><% } %>
+                                            <% } else if (entry.toSection) { %>
+                                                <strong>To Section:</strong> <%= entry.toSection %>
+                                            <% } %>
+                                        </p>
+                                    <% } %>
                                     <% if (entry.notes) { %>
-                                        <p class="text-muted mb-0"><small><%= entry.notes %></small></p>
+                                        <p class="text-muted mb-0"><small><strong>Notes:</strong> <%= entry.notes %></small></p>
                                     <% } %>
                                 </div>
                             </div>
@@ -144,13 +174,33 @@
                             <option value="Completed" <%= file.status === 'Completed' ? 'selected' : '' %>>Completed</option>
                         </select>
                     </div>
-                    <div class="form-group">
-                        <label for="location">Current Location</label>
-                        <input type="text" class="form-control" id="location" name="location" value="<%= file.currentLocation %>" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="handler">Current Handler</label>
-                        <input type="text" class="form-control" id="handler" name="handler" required>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="transfer-section from-section">
+                                <h6 class="text-muted">From</h6>
+                                <div class="form-group">
+                                    <label for="fromSection">Section</label>
+                                    <input type="text" class="form-control" id="fromSection" name="fromSection" value="<%= file.section || '' %>" readonly>
+                                </div>
+                                <div class="form-group">
+                                    <label for="fromOfficialName">Official Name</label>
+                                    <input type="text" class="form-control" id="fromOfficialName" name="fromOfficialName" value="<%= file.owner %>" readonly>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="transfer-section to-section">
+                                <h6 class="text-success">To</h6>
+                                <div class="form-group">
+                                    <label for="toSection">Section</label>
+                                    <input type="text" class="form-control" id="toSection" name="toSection" required>
+                                </div>
+                                <div class="form-group">
+                                    <label for="handler">Official Name</label>
+                                    <input type="text" class="form-control" id="handler" name="handler" required>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                     <div class="form-group">
                         <label for="notes">Notes</label>
@@ -182,26 +232,109 @@
                 <h5 class="mb-0">QR Code</h5>
             </div>
             <div class="card-body text-center">
-                <div id="qrcode" class="mb-3"></div>
-                <button class="btn btn-primary btn-sm" onclick="window.print()">Print QR Code</button>
+                <div class="print-preview-note">
+                    <strong>Print Format:</strong> When printed, this will be formatted as a passport-size label (2.2" x 2.5") with just the QR code and serial number.
+                </div>
+                
+                <div class="qr-container-details mb-3">
+                    <div id="qrcode" class="mb-2"></div>
+                    <div class="qr-serial-details">
+                        <% if (file.serialNumber) { %>
+                            <%= file.serialNumber %>
+                        <% } else { %>
+                            <%= file.fileId %>
+                        <% } %>
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <button class="btn btn-primary btn-sm mr-2" onclick="printQRDetails()">
+                        <i class="fas fa-print"></i> Print QR
+                    </button>
+                    <button class="btn btn-secondary btn-sm" onclick="refreshQRCode()" title="Refresh QR Code">
+                        <i class="fas fa-sync-alt"></i> Refresh
+                    </button>
+                </div>
             </div>
         </div>
     </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/qrcode.js/qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
 <script>
     document.addEventListener('DOMContentLoaded', function() {
         const qrContainer = document.getElementById('qrcode');
         const fileUrl = window.location.href;
         
-        // Generate QR code
-        new QRCode(qrContainer, {
-            text: fileUrl,
-            width: 200,
-            height: 200
-        });
+        // Clear any existing content
+        qrContainer.innerHTML = '';
+        
+        // Generate QR code using QRCode library
+        if (typeof QRCode !== 'undefined') {
+            try {
+                // Create QR code canvas
+                QRCode.toCanvas(qrContainer, fileUrl, {
+                    width: 200,
+                    height: 200,
+                    margin: 2,
+                    color: {
+                        dark: '#000000',
+                        light: '#FFFFFF'
+                    }
+                }, function (error) {
+                    if (error) {
+                        console.error('QR Code generation error:', error);
+                        // Fallback: create a simple text message
+                        qrContainer.innerHTML = '<div style="border: 2px solid #ccc; padding: 20px; text-align: center;">QR Code generation failed<br><small>URL: ' + fileUrl + '</small></div>';
+                    } else {
+                        console.log('QR Code generated successfully');
+                    }
+                });
+            } catch (error) {
+                console.error('QR Code library error:', error);
+                // Fallback: create a simple text message
+                qrContainer.innerHTML = '<div style="border: 2px solid #ccc; padding: 20px; text-align: center;">QR Code generation failed<br><small>URL: ' + fileUrl + '</small></div>';
+            }
+        } else {
+            console.error('QRCode library not loaded');
+            // Fallback: create a simple text message
+            qrContainer.innerHTML = '<div style="border: 2px solid #ccc; padding: 20px; text-align: center;">QR Code library not loaded<br><small>URL: ' + fileUrl + '</small></div>';
+        }
     });
+    
+    // Print QR function with improved error handling
+    function printQRDetails() {
+        try {
+            // Check if QR code is generated (could be img, canvas, or fallback div)
+            const qrImage = document.querySelector('#qrcode img');
+            const qrCanvas = document.querySelector('#qrcode canvas');
+            const qrFallback = document.querySelector('#qrcode div');
+            
+            // Wait a moment for QR code to fully render
+            setTimeout(function() {
+                if (qrImage && !qrImage.complete) {
+                    alert('QR code is still loading. Please wait a moment and try again.');
+                    return;
+                }
+                
+                if (!qrImage && !qrCanvas && !qrFallback) {
+                    alert('QR code not found. Please refresh the page and try again.');
+                    return;
+                }
+                
+                // Trigger print
+                window.print();
+            }, 500);
+            
+        } catch (error) {
+            console.error('Print error:', error);
+            alert('Error occurred while printing. Please try again or use your browser\'s print function (Ctrl+P).');
+        }
+    }
+    
+    // Add a manual refresh button functionality
+    function refreshQRCode() {
+        location.reload();
+    }
 </script>
 
 <style>
@@ -229,13 +362,131 @@
     }
     
     @media print {
-        .navbar, .footer, form, .btn, .card-header {
-            display: none;
+        /* Hide everything we don't want to print */
+        .navbar, .footer, form, .btn, .card-header, .timeline, .print-preview-note {
+            display: none !important;
         }
         
-        #qrcode {
-            margin: 0 auto;
+        /* Hide the left column with file details */
+        .col-md-8 {
+            display: none !important;
         }
+        
+        /* Hide other cards in the right column except the QR card */
+        .col-md-4 .card:not(:last-child) {
+            display: none !important;
+        }
+        
+        /* Style the page */
+        body {
+            margin: 0 !important;
+            padding: 0 !important;
+        }
+        
+        .row {
+            margin: 0 !important;
+        }
+        
+        .col-md-4 {
+            width: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+        }
+        
+        .card {
+            border: none !important;
+            box-shadow: none !important;
+            margin: 0 !important;
+        }
+        
+        .card-body {
+            padding: 0 !important;
+        }
+        
+        /* Style the QR container for passport size */
+        .qr-container-details {
+            width: 2.2in !important;
+            height: 2.5in !important;
+            margin: 0.5in auto !important;
+            padding: 0.1in !important;
+            border: 1px solid #000 !important;
+            display: flex !important;
+            flex-direction: column !important;
+            align-items: center !important;
+            justify-content: center !important;
+            background: white !important;
+            page-break-inside: avoid !important;
+        }
+        
+        /* Style the QR code */
+        #qrcode {
+            margin-bottom: 0.1in !important;
+            text-align: center !important;
+            display: flex !important;
+            justify-content: center !important;
+            align-items: center !important;
+        }
+        
+        #qrcode img,
+        #qrcode canvas,
+        #qrcode div {
+            max-width: 1.8in !important;
+            max-height: 1.8in !important;
+            width: auto !important;
+            height: auto !important;
+            display: block !important;
+            margin: 0 auto !important;
+        }
+        
+        /* Ensure canvas prints correctly */
+        #qrcode canvas {
+            -webkit-print-color-adjust: exact !important;
+            color-adjust: exact !important;
+            print-color-adjust: exact !important;
+        }
+        
+        /* Style the serial number */
+        .qr-serial-details {
+            font-size: 10px !important;
+            font-weight: bold !important;
+            color: #000 !important;
+            text-align: center !important;
+            margin: 0 !important;
+            word-break: break-all !important;
+            line-height: 1.2 !important;
+        }
+    }
+    
+    /* Screen styles for better preview */
+    .qr-container-details {
+        border: 2px dashed #ccc;
+        padding: 15px;
+        margin: 20px auto;
+        max-width: 250px;
+        text-align: center;
+        background: #f9f9f9;
+        min-height: 200px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+    }
+    
+    #qrcode {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        min-height: 150px;
+    }
+    
+    .print-preview-note {
+        background: #e3f2fd;
+        border: 1px solid #2196f3;
+        border-radius: 4px;
+        padding: 10px;
+        margin: 15px 0;
+        font-size: 14px;
+        color: #1976d2;
     }
 </style>
 

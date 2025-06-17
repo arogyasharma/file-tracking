@@ -6,7 +6,7 @@
     </div>
     <div class="card-body text-center">
         <h4 class="card-title">File: <%= fileName %></h4>
-        <div class="row justify-content-center">
+        <div class="row justify-content-center file-details-table">
             <div class="col-md-8">
                 <table class="table table-bordered mb-4">
                     <tr>
@@ -25,17 +25,19 @@
             </div>
         </div>
         
+       
+        
         <div class="qr-container my-4">
             <img src="<%= qrImage %>" alt="QR Code" class="img-fluid" style="max-width: 300px;">
-            <div class="mt-2">
-                <small class="text-muted">Serial: <%= serialNumber %></small>
+            <div class="qr-serial mt-2">
+                <%= serialNumber %>
             </div>
         </div>
         
         <p class="card-text">Scan this QR code to access and update the file's information.</p>
         
         <div class="btn-group mt-3">
-            <button class="btn btn-primary" onclick="window.print()">Print QR Code</button>
+            <button class="btn btn-primary" onclick="printQR()">Print QR</button>
             <a href="/files" class="btn btn-secondary">View All Files</a>
             <a href="/" class="btn btn-outline-primary">Create Another File</a>
         </div>
@@ -58,7 +60,7 @@
 
 <style>
     @media print {
-        .navbar, .footer, .btn-group, .card-header, .instructions-card {
+        .navbar, .footer, .btn-group, .card-header, .instructions-card, .file-details-table {
             display: none !important;
         }
         
@@ -67,19 +69,84 @@
             box-shadow: none !important;
         }
         
+        .card-body {
+            padding: 0 !important;
+        }
+        
         .qr-container {
             page-break-inside: avoid;
+            width: 2.2in !important;
+            height: 2.5in !important;
+            margin: 0 auto !important;
+            padding: 0.1in !important;
+            border: 1px solid #000 !important;
+            display: flex !important;
+            flex-direction: column !important;
+            align-items: center !important;
+            justify-content: center !important;
+            background: white !important;
         }
         
-        .table {
-            font-size: 14px;
+        .qr-container img {
+            max-width: 1.8in !important;
+            max-height: 1.8in !important;
+            width: auto !important;
+            height: auto !important;
+            margin-bottom: 0.1in !important;
         }
         
-        .badge {
-            border: 1px solid #000;
+        .qr-serial {
+            font-size: 10px !important;
+            font-weight: bold !important;
             color: #000 !important;
-            background-color: transparent !important;
+            text-align: center !important;
+            margin: 0 !important;
+            word-break: break-all !important;
         }
+        
+        .card-title {
+            display: none !important;
+        }
+        
+        .card-text {
+            display: none !important;
+        }
+        
+        /* Hide everything except QR container */
+        body * {
+            visibility: hidden;
+        }
+        
+        .qr-container, .qr-container * {
+            visibility: visible;
+        }
+        
+        /* Position the QR container at top-left of page */
+        .qr-container {
+            position: absolute !important;
+            top: 0.5in !important;
+            left: 0.5in !important;
+        }
+    }
+    
+    /* Screen styles for better preview */
+    .qr-container {
+        border: 2px dashed #ccc;
+        padding: 15px;
+        margin: 20px auto;
+        max-width: 250px;
+        text-align: center;
+        background: #f9f9f9;
+    }
+    
+    .print-preview-note {
+        background: #e3f2fd;
+        border: 1px solid #2196f3;
+        border-radius: 4px;
+        padding: 10px;
+        margin: 15px 0;
+        font-size: 14px;
+        color: #1976d2;
     }
 </style>
 

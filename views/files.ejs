@@ -1,6 +1,11 @@
 <%- include('partials/header') %>
 
-<h2>All Files</h2>
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h2>All Files</h2>
+    <button class="btn btn-outline-secondary btn-sm" onclick="location.reload()" title="Refresh file list">
+        <i class="fas fa-sync-alt"></i> Refresh
+    </button>
+</div>
 
 <div class="card mb-4">
     <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
@@ -16,7 +21,7 @@
                             <th>File Number</th>
                             <th>Serial Number</th>
                             <th>Name</th>
-                            <th>Department</th>
+                            <th>Section</th>
                             <th>Current Location</th>
                             <th>Status</th>
                             <th>Created</th>
@@ -29,7 +34,7 @@
                                 <td><strong><%= file.fileNumber || 'N/A' %></strong></td>
                                 <td><span class="badge badge-secondary"><%= file.serialNumber || 'N/A' %></span></td>
                                 <td><%= file.fileName %></td>
-                                <td><%= file.department %></td>
+                                <td><%= file.section %></td>
                                 <td><%= file.currentLocation %></td>
                                 <td>
                                     <span class="badge badge-<%= 

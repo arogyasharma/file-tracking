@@ -7,13 +7,40 @@ const expressLayouts = require('express-ejs-layouts');
 const app = express();
 const port = process.env.PORT || 3000;
 
-// Connect to MongoDB Atlas
+// Connect to MongoDB Atlas with better connection options
 const mongoUri = process.env.MONGODB_URI || 'mongodb+srv://arogyasharma10:rsgd3rM5tON7mLvP@cluster1.7md2bxs.mongodb.net/fileTracker?retryWrites=true&w=majority&appName=Cluster1';
 
-mongoose.connect(mongoUri).then(() => {
+const mongoOptions = {
+    maxPoolSize: 10, // Maintain up to 10 socket connections
+    serverSelectionTimeoutMS: 5000, // Keep trying to send operations for 5 seconds
+    socketTimeoutMS: 45000, // Close sockets after 45 seconds of inactivity
+    maxIdleTimeMS: 30000, // Close connections after 30 seconds of inactivity
+    family: 4 // Use IPv4, skip trying IPv6
+};
+
+mongoose.connect(mongoUri, mongoOptions).then(async () => {
     console.log('Connected to MongoDB');
+    
+    // Initialize settings after connection is established
+    await initializeSettings();
+    
+    // Clean up old records after connection is established
+    await cleanupOldRecords();
 }).catch(err => {
     console.error('MongoDB connection error:', err);
+});
+
+// Handle connection events
+mongoose.connection.on('error', (err) => {
+    console.error('MongoDB connection error:', err);
+});
+
+mongoose.connection.on('disconnected', () => {
+    console.log('MongoDB disconnected');
+});
+
+mongoose.connection.on('reconnected', () => {
+    console.log('MongoDB reconnected');
 });
 
 // Middleware
@@ -32,7 +59,7 @@ const fileSchema = new mongoose.Schema({
     serialNumber: { type: String, required: true, unique: true }, // System-generated serial number
     fileName: { type: String, required: true },
     description: String,
-    department: String,
+    section: String,
     owner: String,
     currentLocation: String,
     status: {
@@ -48,11 +75,16 @@ const fileSchema = new mongoose.Schema({
         location: String,
         status: String,
         handler: String,
+        section: String, // Current section for this history entry
         timestamp: {
             type: Date,
             default: Date.now
         },
-        notes: String
+        notes: String,
+        fromSection: String,
+        toSection: String,
+        fromLocation: String,
+        fromOfficialName: String
     }]
 });
 
@@ -88,9 +120,6 @@ async function initializeSettings() {
     }
 }
 
-// Initialize settings on startup
-initializeSettings();
-
 // Function to clean up old records without required fields
 async function cleanupOldRecords() {
     try {
@@ -111,9 +140,6 @@ async function cleanupOldRecords() {
         console.error('Error cleaning up old records:', error);
     }
 }
-
-// Clean up old records on startup
-cleanupOldRecords();
 
 // Function to generate serial number
 async function generateSerialNumber() {
@@ -142,6 +168,33 @@ async function generateSerialNumber() {
     }
 }
 
+// Health check endpoint
+app.get('/health', async (req, res) => {
+    try {
+        // Check database connection
+        const dbState = mongoose.connection.readyState;
+        const dbStatus = dbState === 1 ? 'connected' : 'disconnected';
+        
+        // Try a simple database operation
+        await File.countDocuments().maxTimeMS(2000);
+        
+        res.json({
+            status: 'healthy',
+            database: dbStatus,
+            timestamp: new Date().toISOString(),
+            uptime: process.uptime()
+        });
+    } catch (error) {
+        console.error('Health check failed:', error);
+        res.status(503).json({
+            status: 'unhealthy',
+            database: 'error',
+            error: error.message,
+            timestamp: new Date().toISOString()
+        });
+    }
+});
+
 // Routes
 app.get('/', (req, res) => {
     res.render('index');
@@ -159,7 +212,7 @@ app.post('/files', async (req, res) => {
             serialNumber: serialNumber,
             fileName: req.body.fileName,
             description: req.body.description,
-            department: req.body.department,
+            section: req.body.section,
             owner: req.body.owner,
             currentLocation: req.body.currentLocation,
             status: req.body.status || 'Active',
@@ -167,15 +220,46 @@ app.post('/files', async (req, res) => {
                 location: req.body.currentLocation,
                 status: req.body.status || 'Active',
                 handler: req.body.owner,
-                notes: 'File created'
+                section: req.body.section, // Current section for this entry
+                notes: 'File created',
+                toSection: req.body.section,
+                fromSection: null,
+                fromLocation: null,
+                fromOfficialName: null
             }]
         });
 
         await newFile.save();
         
-        // Generate QR code URL for this file
+        // Generate QR code URL for this file with retry logic
         const qrUrl = `${req.protocol}://${req.get('host')}/file/${fileId}`;
-        const qrImage = await QRCode.toDataURL(qrUrl);
+        let qrImage;
+        let retryCount = 0;
+        const maxRetries = 3;
+        
+        while (retryCount < maxRetries) {
+            try {
+                qrImage = await QRCode.toDataURL(qrUrl, {
+                    errorCorrectionLevel: 'M',
+                    type: 'image/png',
+                    quality: 0.92,
+                    margin: 1,
+                    color: {
+                        dark: '#000000',
+                        light: '#FFFFFF'
+                    }
+                });
+                break; // Success, exit retry loop
+            } catch (qrError) {
+                retryCount++;
+                console.error(`QR code generation attempt ${retryCount} failed:`, qrError);
+                if (retryCount >= maxRetries) {
+                    throw new Error('Failed to generate QR code after multiple attempts');
+                }
+                // Wait a bit before retrying
+                await new Promise(resolve => setTimeout(resolve, 100 * retryCount));
+            }
+        }
         
         res.render('qrcode', { 
             fileId, 
@@ -199,33 +283,81 @@ app.post('/files', async (req, res) => {
     }
 });
 
-// Get all files
+// Get all files with better error handling and timeout
 app.get('/files', async (req, res) => {
     try {
-        const files = await File.find().sort({ createdAt: -1 });
-        res.render('files', { files });
+        // Add timeout to prevent hanging requests
+        const files = await File.find()
+            .sort({ createdAt: -1 })
+            .maxTimeMS(10000) // 10 second timeout
+            .lean() // Return plain JavaScript objects for better performance
+            .exec();
+        
+        // Ensure files is always an array
+        const safeFiles = Array.isArray(files) ? files : [];
+        
+        res.render('files', { files: safeFiles });
     } catch (error) {
         console.error('Error fetching files:', error);
-        res.status(500).send('Error fetching files');
+        
+        // Check if it's a timeout error
+        if (error.name === 'MongooseError' && error.message.includes('timeout')) {
+            res.status(504).render('error', { 
+                message: 'Database request timed out. Please try again in a moment.',
+                backLink: '/'
+            });
+        } else {
+            res.status(500).render('error', { 
+                message: 'Error fetching files. Please try again.',
+                backLink: '/'
+            });
+        }
     }
 });
 
 // Get file by ID (for QR code scanning)
 app.get('/file/:fileId', async (req, res) => {
     try {
-        const file = await File.findOne({ fileId: req.params.fileId });
+        const file = await File.findOne({ fileId: req.params.fileId })
+            .maxTimeMS(5000) // 5 second timeout
+            .lean()
+            .exec();
+            
         if (!file) {
-            return res.status(404).render('error', { message: 'File not found' });
+            return res.status(404).render('error', { 
+                message: 'File not found',
+                backLink: '/files'
+            });
         }
         
-        // Get the setting for QR status change permission
-        const setting = await Settings.findOne({ key: 'allowQRStatusChange' });
-        const allowStatusChange = setting ? setting.value : true; // Default to true if setting not found
+        // Get the setting for QR status change permission with timeout
+        let allowStatusChange = true; // Default value
+        try {
+            const setting = await Settings.findOne({ key: 'allowQRStatusChange' })
+                .maxTimeMS(3000)
+                .lean()
+                .exec();
+            allowStatusChange = setting ? setting.value : true;
+        } catch (settingError) {
+            console.error('Error fetching settings, using default:', settingError);
+            // Continue with default value
+        }
         
         res.render('fileDetails', { file, allowStatusChange });
     } catch (error) {
         console.error('Error fetching file:', error);
-        res.status(500).send('Error fetching file');
+        
+        if (error.name === 'MongooseError' && error.message.includes('timeout')) {
+            res.status(504).render('error', { 
+                message: 'Database request timed out. Please try again.',
+                backLink: '/files'
+            });
+        } else {
+            res.status(500).render('error', { 
+                message: 'Error fetching file details. Please try again.',
+                backLink: '/files'
+            });
+        }
     }
 });
 
@@ -252,12 +384,28 @@ app.post('/file/:fileId/update', async (req, res) => {
         file.status = req.body.status;
         file.currentLocation = req.body.location;
         
-        // Add to history
+        // Update section if provided
+        if (req.body.toSection) {
+            file.section = req.body.toSection;
+        }
+        
+        // Update owner if provided
+        if (req.body.handler) {
+            file.owner = req.body.handler;
+        }
+        
+        // Add to history with enhanced tracking
         file.history.push({
             location: req.body.location,
             status: req.body.status,
             handler: req.body.handler,
-            notes: req.body.notes
+            notes: req.body.notes,
+            section: req.body.toSection, // Current section for this entry
+            fromSection: req.body.fromSection,
+            toSection: req.body.toSection,
+            fromLocation: req.body.fromLocation,
+            fromOfficialName: req.body.fromOfficialName,
+            timestamp: new Date()
         });
 
         await file.save();
@@ -347,6 +495,42 @@ app.post('/admin/cleanup', async (req, res) => {
         console.error('Error in manual cleanup:', error);
         res.status(500).json({ success: false, message: 'Error cleaning up records' });
     }
+});
+
+// Global error handler middleware
+app.use((error, req, res, next) => {
+    console.error('Unhandled error:', error);
+    
+    // Check if response was already sent
+    if (res.headersSent) {
+        return next(error);
+    }
+    
+    // Handle different types of errors
+    if (error.name === 'MongooseError' || error.name === 'MongoError') {
+        res.status(503).render('error', {
+            message: 'Database service temporarily unavailable. Please try again in a moment.',
+            backLink: '/'
+        });
+    } else if (error.name === 'ValidationError') {
+        res.status(400).render('error', {
+            message: 'Invalid data provided. Please check your input and try again.',
+            backLink: req.get('Referer') || '/'
+        });
+    } else {
+        res.status(500).render('error', {
+            message: 'An unexpected error occurred. Please try again.',
+            backLink: '/'
+        });
+    }
+});
+
+// 404 handler
+app.use((req, res) => {
+    res.status(404).render('error', {
+        message: 'Page not found',
+        backLink: '/'
+    });
 });
 
 // For local development
