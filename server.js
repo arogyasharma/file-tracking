@@ -4,19 +4,54 @@ const bodyParser = require('body-parser');
 const path = require('path');
 const QRCode = require('qrcode');
 const expressLayouts = require('express-ejs-layouts');
+const compression = require('compression');
 const app = express();
 const port = process.env.PORT || 3000;
+
+// Simple in-memory cache for settings
+let settingsCache = new Map();
+let cacheExpiry = new Map();
+
+// Helper function to get cached settings
+async function getCachedSetting(key, defaultValue = null) {
+    const now = Date.now();
+    const expiry = cacheExpiry.get(key);
+    
+    // Check if cache is valid (5 minutes)
+    if (settingsCache.has(key) && expiry && now < expiry) {
+        return settingsCache.get(key);
+    }
+    
+    try {
+        const setting = await Settings.findOne({ key }).maxTimeMS(2000).lean().exec();
+        const value = setting ? setting.value : defaultValue;
+        
+        // Cache for 5 minutes
+        settingsCache.set(key, value);
+        cacheExpiry.set(key, now + 300000);
+        
+        return value;
+    } catch (error) {
+        console.error(`Error fetching setting ${key}:`, error);
+        return defaultValue;
+    }
+}
 
 // Connect to MongoDB Atlas with better connection options
 const mongoUri = process.env.MONGODB_URI || 'mongodb+srv://arogyasharma10:rsgd3rM5tON7mLvP@cluster1.7md2bxs.mongodb.net/fileTracker?retryWrites=true&w=majority&appName=Cluster1';
 
 const mongoOptions = {
-    maxPoolSize: 10, // Maintain up to 10 socket connections
-    serverSelectionTimeoutMS: 5000, // Keep trying to send operations for 5 seconds
-    socketTimeoutMS: 45000, // Close sockets after 45 seconds of inactivity
-    maxIdleTimeMS: 30000, // Close connections after 30 seconds of inactivity
+    maxPoolSize: 20, // Increase connection pool size for better concurrency
+    minPoolSize: 5, // Maintain minimum connections
+    serverSelectionTimeoutMS: 3000, // Reduce timeout for faster failures
+    socketTimeoutMS: 30000, // Reduce socket timeout
+    maxIdleTimeMS: 20000, // Reduce idle time
+    connectTimeoutMS: 10000, // Connection timeout
     family: 4 // Use IPv4, skip trying IPv6
 };
+
+// Configure mongoose for better performance
+mongoose.set('bufferCommands', false);
 
 mongoose.connect(mongoUri, mongoOptions).then(async () => {
     console.log('Connected to MongoDB');
@@ -43,10 +78,33 @@ mongoose.connection.on('reconnected', () => {
     console.log('MongoDB reconnected');
 });
 
-// Middleware
-app.use(bodyParser.urlencoded({ extended: false }));
-app.use(bodyParser.json());
-app.use(express.static(path.join(__dirname, 'public')));
+// Performance Middleware
+app.use(compression()); // Enable gzip compression
+
+// Security and performance headers
+app.use((req, res, next) => {
+    // Cache static assets for 1 hour
+    if (req.url.match(/\.(css|js|png|jpg|jpeg|gif|ico|svg)$/)) {
+        res.setHeader('Cache-Control', 'public, max-age=3600');
+    }
+    // Security headers
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('X-XSS-Protection', '1; mode=block');
+    next();
+});
+
+// Body parsing middleware with limits
+app.use(bodyParser.urlencoded({ extended: false, limit: '10mb' }));
+app.use(bodyParser.json({ limit: '10mb' }));
+
+// Static file serving with caching
+app.use(express.static(path.join(__dirname, 'public'), {
+    maxAge: '1h', // Cache static files for 1 hour
+    etag: true,
+    lastModified: true
+}));
+
 app.use(expressLayouts);
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
@@ -87,6 +145,13 @@ const fileSchema = new mongoose.Schema({
         fromOfficialName: String
     }]
 });
+
+// Add indexes for better query performance (only non-unique ones)
+fileSchema.index({ status: 1 });
+fileSchema.index({ createdAt: -1 });
+fileSchema.index({ section: 1 });
+fileSchema.index({ owner: 1 });
+fileSchema.index({ fileNumber: 1 }); // This one is not unique in schema
 
 const File = mongoose.model('File', fileSchema);
 
@@ -283,20 +348,42 @@ app.post('/files', async (req, res) => {
     }
 });
 
-// Get all files with better error handling and timeout
+// Get all files with pagination and better performance
 app.get('/files', async (req, res) => {
     try {
-        // Add timeout to prevent hanging requests
-        const files = await File.find()
-            .sort({ createdAt: -1 })
-            .maxTimeMS(10000) // 10 second timeout
-            .lean() // Return plain JavaScript objects for better performance
-            .exec();
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 50; // Limit to 50 files per page
+        const skip = (page - 1) * limit;
+        
+        // Get files with pagination and only essential fields for listing
+        const [files, totalCount] = await Promise.all([
+            File.find()
+                .select('fileId fileName fileNumber serialNumber status section owner createdAt') // Only select needed fields
+                .sort({ createdAt: -1 })
+                .skip(skip)
+                .limit(limit)
+                .maxTimeMS(5000) // Reduced timeout
+                .lean() // Return plain JavaScript objects for better performance
+                .exec(),
+            File.countDocuments().maxTimeMS(3000) // Quick count for pagination
+        ]);
+        
+        // Calculate pagination info
+        const totalPages = Math.ceil(totalCount / limit);
+        const hasNextPage = page < totalPages;
+        const hasPrevPage = page > 1;
         
         // Ensure files is always an array
         const safeFiles = Array.isArray(files) ? files : [];
         
-        res.render('files', { files: safeFiles });
+        res.render('files', { 
+            files: safeFiles,
+            currentPage: page,
+            totalPages,
+            hasNextPage,
+            hasPrevPage,
+            totalCount
+        });
     } catch (error) {
         console.error('Error fetching files:', error);
         
@@ -315,13 +402,17 @@ app.get('/files', async (req, res) => {
     }
 });
 
-// Get file by ID (for QR code scanning)
+// Get file by ID (for QR code scanning) - Optimized with caching
 app.get('/file/:fileId', async (req, res) => {
     try {
-        const file = await File.findOne({ fileId: req.params.fileId })
-            .maxTimeMS(5000) // 5 second timeout
-            .lean()
-            .exec();
+        // Use Promise.all to fetch file and cached settings concurrently
+        const [file, allowStatusChange] = await Promise.all([
+            File.findOne({ fileId: req.params.fileId })
+                .maxTimeMS(3000) // Reduced timeout
+                .lean()
+                .exec(),
+            getCachedSetting('allowQRStatusChange', true)
+        ]);
             
         if (!file) {
             return res.status(404).render('error', { 
@@ -330,18 +421,8 @@ app.get('/file/:fileId', async (req, res) => {
             });
         }
         
-        // Get the setting for QR status change permission with timeout
-        let allowStatusChange = true; // Default value
-        try {
-            const setting = await Settings.findOne({ key: 'allowQRStatusChange' })
-                .maxTimeMS(3000)
-                .lean()
-                .exec();
-            allowStatusChange = setting ? setting.value : true;
-        } catch (settingError) {
-            console.error('Error fetching settings, using default:', settingError);
-            // Continue with default value
-        }
+        // Set cache headers for file details (cache for 2 minutes)
+        res.setHeader('Cache-Control', 'private, max-age=120');
         
         res.render('fileDetails', { file, allowStatusChange });
     } catch (error) {
@@ -364,9 +445,8 @@ app.get('/file/:fileId', async (req, res) => {
 // Update file status
 app.post('/file/:fileId/update', async (req, res) => {
     try {
-        // Check if QR status change is allowed
-        const setting = await Settings.findOne({ key: 'allowQRStatusChange' });
-        const allowStatusChange = setting ? setting.value : true;
+        // Check if QR status change is allowed using cache
+        const allowStatusChange = await getCachedSetting('allowQRStatusChange', true);
         
         if (!allowStatusChange) {
             return res.status(403).render('error', { 
