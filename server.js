@@ -129,7 +129,7 @@ app.set('layout', 'layout');
 // File Schema
 const fileSchema = new mongoose.Schema({
     fileId: { type: String, required: true, unique: true },
-    fileNumber: { type: String, required: true, unique: true }, // User-provided file number
+    fileNumber: { type: String, required: true }, // User-provided file number - unique constraint handled in code
     serialNumber: { type: String, required: true, unique: true }, // System-generated serial number
     fileName: { type: String, required: true },
     description: String,
@@ -162,12 +162,12 @@ const fileSchema = new mongoose.Schema({
     }]
 });
 
-// Add indexes for better query performance (only non-unique ones)
+// Add indexes for better query performance
 fileSchema.index({ status: 1 });
 fileSchema.index({ createdAt: -1 });
 fileSchema.index({ section: 1 });
 fileSchema.index({ owner: 1 });
-// fileNumber index removed since it's now unique in schema
+fileSchema.index({ fileNumber: 1 }); // Regular index for performance
 
 const File = mongoose.model('File', fileSchema);
 
@@ -184,7 +184,7 @@ const settingsSchema = new mongoose.Schema({
 
 const Settings = mongoose.model('Settings', settingsSchema);
 
-// Initialize default settings
+// Initialize default settings and database constraints
 async function initializeSettings() {
     try {
         const existingSetting = await Settings.findOne({ key: 'allowQRStatusChange' });
@@ -196,8 +196,81 @@ async function initializeSettings() {
             });
             console.log('Default settings initialized');
         }
+        
+        // Safely create unique index for fileNumber
+        await createUniqueFileNumberIndex();
     } catch (error) {
         console.error('Error initializing settings:', error);
+    }
+}
+
+// Function to safely create unique index for fileNumber
+async function createUniqueFileNumberIndex() {
+    try {
+        // Skip index creation in serverless environments to avoid timeout issues
+        if (process.env.VERCEL || process.env.NODE_ENV === 'production') {
+            console.log('Skipping unique index creation in serverless environment');
+            return;
+        }
+        
+        // Check if unique index already exists
+        const indexes = await File.collection.getIndexes();
+        const hasUniqueFileNumberIndex = Object.keys(indexes).some(indexName => 
+            indexes[indexName].some(field => 
+                field.fileNumber && indexes[indexName].unique
+            )
+        );
+        
+        if (!hasUniqueFileNumberIndex) {
+            // Remove any duplicate fileNumbers before creating unique index
+            await removeDuplicateFileNumbers();
+            
+            // Create unique index
+            await File.collection.createIndex({ fileNumber: 1 }, { unique: true });
+            console.log('Unique index created for fileNumber');
+        }
+    } catch (error) {
+        console.warn('Could not create unique index for fileNumber:', error.message);
+        // Continue without unique index - validation will still work via code
+    }
+}
+
+// Function to remove duplicate file numbers (keep the oldest one)
+async function removeDuplicateFileNumbers() {
+    try {
+        // Limit the operation to avoid timeout in serverless environments
+        const duplicates = await File.aggregate([
+            {
+                $group: {
+                    _id: "$fileNumber",
+                    count: { $sum: 1 },
+                    docs: { $push: { id: "$_id", createdAt: "$createdAt" } }
+                }
+            },
+            {
+                $match: { count: { $gt: 1 } }
+            },
+            {
+                $limit: 10 // Limit to 10 duplicates at a time to avoid timeout
+            }
+        ]);
+        
+        for (const duplicate of duplicates) {
+            // Sort by createdAt and keep the oldest, remove the rest
+            const sortedDocs = duplicate.docs.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+            const toRemove = sortedDocs.slice(1); // Remove all except the first (oldest)
+            
+            for (const doc of toRemove) {
+                await File.findByIdAndDelete(doc.id);
+                console.log(`Removed duplicate file with fileNumber: ${duplicate._id}`);
+            }
+        }
+        
+        if (duplicates.length > 0) {
+            console.log(`Processed ${duplicates.length} duplicate file number groups`);
+        }
+    } catch (error) {
+        console.warn('Error removing duplicate file numbers:', error.message);
     }
 }
 
@@ -315,8 +388,10 @@ app.post('/files', upload.none(), async (req, res) => {
             return res.status(400).json({ error: 'Missing required fields' });
         }
         
-        // Check for duplicate file number
-        const existingFile = await File.findOne({ fileNumber: req.body.fileNumber }).lean();
+        // Check for duplicate file number with timeout
+        const existingFile = await File.findOne({ fileNumber: req.body.fileNumber })
+            .maxTimeMS(5000)
+            .lean();
         if (existingFile) {
             return res.status(400).json({ 
                 error: 'Duplicate file number! A file with this number already exists. Please try again with a different file number.',
@@ -458,7 +533,8 @@ app.post('/files', upload.none(), async (req, res) => {
             // Duplicate key error
             if (error.keyPattern && error.keyPattern.serialNumber) {
                 res.status(400).json({ error: 'Serial number generation conflict. Please try again.' });
-            } else if (error.keyPattern && error.keyPattern.fileNumber) {
+            } else if ((error.keyPattern && error.keyPattern.fileNumber) || 
+                       (error.message && error.message.includes('fileNumber'))) {
                 res.status(400).json({ 
                     error: 'Duplicate file number! A file with this number already exists. Please try again with a different file number.',
                     duplicateField: 'fileNumber'
