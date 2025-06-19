@@ -69,8 +69,6 @@
                                 <td>
                                     <span class="badge badge-<%= 
                                         file.status === 'Active' ? 'success' : 
-                                        file.status === 'Pending' ? 'warning' : 
-                                        file.status === 'In Review' ? 'info' : 
                                         file.status === 'Completed' ? 'primary' : 
                                         'secondary' 
                                     %>">
@@ -123,23 +121,12 @@
                                     </h6>
                                     <p class="mb-1">
                                         <strong>Status:</strong> <%= entry.status %> | 
-                                        <strong>Location:</strong> <%= entry.location || 'Not specified' %> | 
+                                        <strong>Section:</strong> <%= entry.toSection || entry.location || 'Not specified' %> | 
                                         <strong>Handler:</strong> <%= entry.handler %>
                                     </p>
-                                    <% if (entry.fromSection || entry.toSection) { %>
+                                    <% if (entry.fromOfficialName && entry.handler && entry.fromOfficialName !== entry.handler) { %>
                                         <p class="mb-1 text-info">
-                                            <% if (entry.fromSection && entry.toSection) { %>
-                                                <strong>Transfer:</strong> <%= entry.fromSection %> → <%= entry.toSection %>
-                                                <% if (entry.fromOfficialName) { %>
-                                                    <br><small><strong>From:</strong> <%= entry.fromOfficialName %> 
-                                                    <% if (entry.fromLocation && entry.fromLocation !== entry.fromSection) { %>(<%= entry.fromLocation %>)<% } %></small>
-                                                <% } %>
-                                            <% } else if (entry.fromSection) { %>
-                                                <strong>From Section:</strong> <%= entry.fromSection %>
-                                                <% if (entry.fromOfficialName) { %> - <%= entry.fromOfficialName %><% } %>
-                                            <% } else if (entry.toSection) { %>
-                                                <strong>To Section:</strong> <%= entry.toSection %>
-                                            <% } %>
+                                            <strong>Transfer:</strong> <%= entry.fromOfficialName %> → <%= entry.handler %>
                                         </p>
                                     <% } %>
                                     <% if (entry.notes) { %>
@@ -168,11 +155,12 @@
                         <label for="status">New Status</label>
                         <select class="form-control" id="status" name="status" required>
                             <option value="Active" <%= file.status === 'Active' ? 'selected' : '' %>>Active</option>
-                            <option value="Pending" <%= file.status === 'Pending' ? 'selected' : '' %>>Pending</option>
-                            <option value="In Review" <%= file.status === 'In Review' ? 'selected' : '' %>>In Review</option>
-                            <option value="Archived" <%= file.status === 'Archived' ? 'selected' : '' %>>Archived</option>
                             <option value="Completed" <%= file.status === 'Completed' ? 'selected' : '' %>>Completed</option>
                         </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="date">Date</label>
+                        <input type="date" class="form-control" id="date" name="date" required>
                     </div>
                     <div class="row">
                         <div class="col-md-6">
@@ -237,7 +225,15 @@
                 </div>
                 
                 <div class="qr-container-details mb-3">
-                    <div id="qrcode" class="mb-2"></div>
+                    <div id="qrcode" class="mb-2">
+                        <% if (typeof qrImage !== 'undefined' && qrImage) { %>
+                            <img src="<%= qrImage %>" alt="QR Code" style="max-width: 200px; max-height: 200px;">
+                        <% } else { %>
+                            <div style="border: 2px solid #ccc; padding: 20px; text-align: center; width: 200px; height: 200px; display: flex; align-items: center; justify-content: center;">
+                                <span>QR Code<br>Loading...</span>
+                            </div>
+                        <% } %>
+                    </div>
                     <div class="qr-serial-details">
                         <% if (file.serialNumber) { %>
                             <%= file.serialNumber %>
@@ -259,47 +255,8 @@
     </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
 <script>
-    document.addEventListener('DOMContentLoaded', function() {
-        const qrContainer = document.getElementById('qrcode');
-        const fileUrl = window.location.href;
-        
-        // Clear any existing content
-        qrContainer.innerHTML = '';
-        
-        // Generate QR code using QRCode library
-        if (typeof QRCode !== 'undefined') {
-            try {
-                // Create QR code canvas
-                QRCode.toCanvas(qrContainer, fileUrl, {
-                    width: 200,
-                    height: 200,
-                    margin: 2,
-                    color: {
-                        dark: '#000000',
-                        light: '#FFFFFF'
-                    }
-                }, function (error) {
-                    if (error) {
-                        console.error('QR Code generation error:', error);
-                        // Fallback: create a simple text message
-                        qrContainer.innerHTML = '<div style="border: 2px solid #ccc; padding: 20px; text-align: center;">QR Code generation failed<br><small>URL: ' + fileUrl + '</small></div>';
-                    } else {
-                        console.log('QR Code generated successfully');
-                    }
-                });
-            } catch (error) {
-                console.error('QR Code library error:', error);
-                // Fallback: create a simple text message
-                qrContainer.innerHTML = '<div style="border: 2px solid #ccc; padding: 20px; text-align: center;">QR Code generation failed<br><small>URL: ' + fileUrl + '</small></div>';
-            }
-        } else {
-            console.error('QRCode library not loaded');
-            // Fallback: create a simple text message
-            qrContainer.innerHTML = '<div style="border: 2px solid #ccc; padding: 20px; text-align: center;">QR Code library not loaded<br><small>URL: ' + fileUrl + '</small></div>';
-        }
-    });
+    // QR code is now generated server-side and displayed as an image
     
     // Print QR function with improved error handling
     function printQRDetails() {
@@ -335,6 +292,18 @@
     function refreshQRCode() {
         location.reload();
     }
+    
+    // Auto-fill date field with today's date
+    document.addEventListener('DOMContentLoaded', function() {
+        const dateInput = document.getElementById('date');
+        if (dateInput) {
+            const today = new Date();
+            const formattedDate = today.getFullYear() + '-' + 
+                String(today.getMonth() + 1).padStart(2, '0') + '-' + 
+                String(today.getDate()).padStart(2, '0');
+            dateInput.value = formattedDate;
+        }
+    });
 </script>
 
 <style>
@@ -428,7 +397,6 @@
         }
         
         #qrcode img,
-        #qrcode canvas,
         #qrcode div {
             max-width: 1.8in !important;
             max-height: 1.8in !important;
@@ -438,8 +406,8 @@
             margin: 0 auto !important;
         }
         
-        /* Ensure canvas prints correctly */
-        #qrcode canvas {
+        /* Ensure images print correctly */
+        #qrcode img {
             -webkit-print-color-adjust: exact !important;
             color-adjust: exact !important;
             print-color-adjust: exact !important;

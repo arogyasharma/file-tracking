@@ -59,12 +59,13 @@
                     <div class="form-group">
                         <label for="status">Status</label>
                         <select class="form-control" id="status" name="status">
-                            <option value="Active">Active</option>
-                            <option value="Pending">Pending</option>
-                            <option value="In Review">In Review</option>
-                            <option value="Archived">Archived</option>
+                            <option value="Active" selected>Active</option>
                             <option value="Completed">Completed</option>
                         </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="date">Date</label>
+                        <input type="date" class="form-control" id="date" name="date" required>
                     </div>
                     <button type="submit" class="btn btn-primary">Create File & Generate QR Code</button>
                 </form>
@@ -102,3 +103,17 @@
 </div>
 
 <%- include('partials/footer') %>
+
+<script>
+// Auto-fill date field with today's date
+document.addEventListener('DOMContentLoaded', function() {
+    const dateInput = document.getElementById('date');
+    if (dateInput) {
+        const today = new Date();
+        const formattedDate = today.getFullYear() + '-' + 
+            String(today.getMonth() + 1).padStart(2, '0') + '-' + 
+            String(today.getDate()).padStart(2, '0');
+        dateInput.value = formattedDate;
+    }
+});
+</script>

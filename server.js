@@ -703,6 +703,30 @@ app.post('/file/:fileId/update', async (req, res) => {
     }
 });
 
+// Route to generate QR code for a file
+app.get('/qr/:fileId', async (req, res) => {
+    try {
+        const fileId = req.params.fileId;
+        const fileUrl = `${req.protocol}://${req.get('host')}/file/${fileId}`;
+        
+        const qrImage = await QRCode.toBuffer(fileUrl, {
+            width: 200,
+            margin: 2,
+            color: {
+                dark: '#000000',
+                light: '#FFFFFF'
+            }
+        });
+        
+        res.setHeader('Content-Type', 'image/png');
+        res.setHeader('Cache-Control', 'public, max-age=3600'); // Cache for 1 hour
+        res.send(qrImage);
+    } catch (error) {
+        console.error('Error generating QR code:', error);
+        res.status(500).send('Error generating QR code');
+    }
+});
+
 // Search for a file by ID, File Number, or Serial Number
 app.get('/search', async (req, res) => {
     try {
