@@ -226,13 +226,15 @@
                 
                 <div class="qr-container-details mb-3">
                     <div id="qrcode" class="mb-2">
-                        <% if (typeof qrImage !== 'undefined' && qrImage) { %>
-                            <img src="<%= qrImage %>" alt="QR Code" style="max-width: 200px; max-height: 200px;">
-                        <% } else { %>
-                            <div style="border: 2px solid #ccc; padding: 20px; text-align: center; width: 200px; height: 200px; display: flex; align-items: center; justify-content: center;">
-                                <span>QR Code<br>Loading...</span>
+                        <img src="/qr/<%= file.fileId %>" alt="QR Code for <%= file.fileName %>" 
+                             style="max-width: 200px; max-height: 200px; border: 1px solid #ddd;"
+                             onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                        <div style="border: 2px solid #dc3545; padding: 20px; text-align: center; width: 200px; height: 200px; display: none; align-items: center; justify-content: center; background-color: #f8f9fa;">
+                            <div>
+                                <span style="color: #dc3545; font-weight: bold;">QR Code Failed</span><br>
+                                <small style="color: #6c757d;">Please refresh the page</small>
                             </div>
-                        <% } %>
+                        </div>
                     </div>
                     <div class="qr-serial-details">
                         <% if (file.serialNumber) { %>
