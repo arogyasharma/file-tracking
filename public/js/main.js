@@ -87,7 +87,36 @@ document.addEventListener('DOMContentLoaded', function() {
         })
         .catch(error => {
             console.error('File creation error:', error);
-            alert('Error creating file: ' + error.message + '\n\nPlease check your internet connection and try again.');
+            
+            // Check if it's a duplicate file number error
+            if (error.message.toLowerCase().includes('duplicate file number')) {
+                // Highlight the file number field
+                const fileNumberField = form.querySelector('#fileNumber');
+                const errorDiv = form.querySelector('#fileNumberError');
+                
+                if (fileNumberField) {
+                    fileNumberField.classList.add('is-invalid');
+                    fileNumberField.focus();
+                    
+                    // Show error message in the form
+                    if (errorDiv) {
+                        errorDiv.textContent = '❌ ' + error.message;
+                        errorDiv.style.display = 'block';
+                    }
+                    
+                    // Remove the error styling and message after user starts typing
+                    fileNumberField.addEventListener('input', function() {
+                        this.classList.remove('is-invalid');
+                        if (errorDiv) {
+                            errorDiv.style.display = 'none';
+                        }
+                    }, { once: true });
+                }
+                
+                alert('❌ DUPLICATE FILE NUMBER!\n\n' + error.message + '\n\nPlease enter a different file number and try again.');
+            } else {
+                alert('Error creating file: ' + error.message + '\n\nPlease check your internet connection and try again.');
+            }
             
             // Reset form state
             form.dataset.submitting = 'false';

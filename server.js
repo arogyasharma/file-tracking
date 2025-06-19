@@ -129,7 +129,7 @@ app.set('layout', 'layout');
 // File Schema
 const fileSchema = new mongoose.Schema({
     fileId: { type: String, required: true, unique: true },
-    fileNumber: { type: String, required: true }, // User-provided file number
+    fileNumber: { type: String, required: true, unique: true }, // User-provided file number
     serialNumber: { type: String, required: true, unique: true }, // System-generated serial number
     fileName: { type: String, required: true },
     description: String,
@@ -167,7 +167,7 @@ fileSchema.index({ status: 1 });
 fileSchema.index({ createdAt: -1 });
 fileSchema.index({ section: 1 });
 fileSchema.index({ owner: 1 });
-fileSchema.index({ fileNumber: 1 }); // This one is not unique in schema
+// fileNumber index removed since it's now unique in schema
 
 const File = mongoose.model('File', fileSchema);
 
@@ -315,6 +315,15 @@ app.post('/files', upload.none(), async (req, res) => {
             return res.status(400).json({ error: 'Missing required fields' });
         }
         
+        // Check for duplicate file number
+        const existingFile = await File.findOne({ fileNumber: req.body.fileNumber }).lean();
+        if (existingFile) {
+            return res.status(400).json({ 
+                error: 'Duplicate file number! A file with this number already exists. Please try again with a different file number.',
+                duplicateField: 'fileNumber'
+            });
+        }
+        
         // Simple duplicate submission prevention
         const submissionKey = `${req.body.fileNumber}-${req.body.fileName}-${req.body.owner}`;
         const now = Date.now();
@@ -449,6 +458,11 @@ app.post('/files', upload.none(), async (req, res) => {
             // Duplicate key error
             if (error.keyPattern && error.keyPattern.serialNumber) {
                 res.status(400).json({ error: 'Serial number generation conflict. Please try again.' });
+            } else if (error.keyPattern && error.keyPattern.fileNumber) {
+                res.status(400).json({ 
+                    error: 'Duplicate file number! A file with this number already exists. Please try again with a different file number.',
+                    duplicateField: 'fileNumber'
+                });
             } else {
                 res.status(400).json({ error: 'File with this information already exists.' });
             }
