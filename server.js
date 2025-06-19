@@ -1,6 +1,7 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const bodyParser = require('body-parser');
+const multer = require('multer');
 const path = require('path');
 const QRCode = require('qrcode');
 const expressLayouts = require('express-ejs-layouts');
@@ -11,6 +12,9 @@ const port = process.env.PORT || 3000;
 // Simple in-memory cache for settings
 let settingsCache = new Map();
 let cacheExpiry = new Map();
+
+// Simple rate limiting for file creation (prevent duplicate submissions)
+let recentSubmissions = new Map();
 
 // Helper function to get cached settings
 async function getCachedSetting(key, defaultValue = null) {
@@ -41,28 +45,37 @@ async function getCachedSetting(key, defaultValue = null) {
 const mongoUri = process.env.MONGODB_URI || 'mongodb+srv://arogyasharma10:rsgd3rM5tON7mLvP@cluster1.7md2bxs.mongodb.net/fileTracker?retryWrites=true&w=majority&appName=Cluster1';
 
 const mongoOptions = {
-    maxPoolSize: 20, // Increase connection pool size for better concurrency
-    minPoolSize: 5, // Maintain minimum connections
-    serverSelectionTimeoutMS: 3000, // Reduce timeout for faster failures
-    socketTimeoutMS: 30000, // Reduce socket timeout
-    maxIdleTimeMS: 20000, // Reduce idle time
-    connectTimeoutMS: 10000, // Connection timeout
-    family: 4 // Use IPv4, skip trying IPv6
+    maxPoolSize: 10,
+    serverSelectionTimeoutMS: 5000
 };
 
 // Configure mongoose for better performance
-mongoose.set('bufferCommands', false);
+// Removed deprecated bufferCommands setting
 
-mongoose.connect(mongoUri, mongoOptions).then(async () => {
-    console.log('Connected to MongoDB');
-    
-    // Initialize settings after connection is established
-    await initializeSettings();
-    
-    // Clean up old records after connection is established
-    await cleanupOldRecords();
-}).catch(err => {
-    console.error('MongoDB connection error:', err);
+// Database connection function for serverless
+async function connectToDatabase() {
+    if (mongoose.connection.readyState === 0) {
+        try {
+            await mongoose.connect(mongoUri, mongoOptions);
+            console.log('Connected to MongoDB');
+            
+            // Initialize settings after connection is established
+            await initializeSettings();
+            
+            // Clean up old records after connection is established (only in production)
+            if (process.env.NODE_ENV === 'production') {
+                await cleanupOldRecords();
+            }
+        } catch (err) {
+            console.error('MongoDB connection error:', err);
+            throw err;
+        }
+    }
+}
+
+// Initial connection attempt
+connectToDatabase().catch(err => {
+    console.error('Initial MongoDB connection failed:', err);
 });
 
 // Handle connection events
@@ -93,6 +106,9 @@ app.use((req, res, next) => {
     res.setHeader('X-XSS-Protection', '1; mode=block');
     next();
 });
+
+// Configure multer for handling multipart/form-data
+const upload = multer();
 
 // Body parsing middleware with limits
 app.use(bodyParser.urlencoded({ extended: false, limit: '10mb' }));
@@ -206,16 +222,16 @@ async function cleanupOldRecords() {
     }
 }
 
-// Function to generate serial number
-async function generateSerialNumber() {
+// Function to generate serial number with retry logic
+async function generateSerialNumber(retryCount = 0) {
     const currentYear = new Date().getFullYear();
     const prefix = `SN${currentYear}`;
     
     try {
-        // Find the highest serial number for the current year
+        // Find the highest serial number for the current year with a lock
         const lastFile = await File.findOne({
             serialNumber: { $regex: `^${prefix}` }
-        }).sort({ serialNumber: -1 });
+        }).sort({ serialNumber: -1 }).lean();
         
         let nextNumber = 1;
         if (lastFile && lastFile.serialNumber) {
@@ -223,19 +239,29 @@ async function generateSerialNumber() {
             nextNumber = lastNumber + 1;
         }
         
+        // Add retry count to avoid duplicates in concurrent requests
+        if (retryCount > 0) {
+            nextNumber += retryCount;
+        }
+        
         // Format with leading zeros (6 digits)
         const formattedNumber = nextNumber.toString().padStart(6, '0');
         return `${prefix}${formattedNumber}`;
     } catch (error) {
         console.error('Error generating serial number:', error);
-        // Fallback to timestamp-based serial number
-        return `SN${currentYear}${Date.now().toString().slice(-6)}`;
+        // Fallback to timestamp-based serial number with random component
+        const timestamp = Date.now().toString().slice(-6);
+        const random = Math.floor(Math.random() * 100).toString().padStart(2, '0');
+        return `SN${currentYear}${timestamp}${random}`;
     }
 }
 
 // Health check endpoint
 app.get('/health', async (req, res) => {
     try {
+        // Ensure database connection for serverless
+        await connectToDatabase();
+        
         // Check database connection
         const dbState = mongoose.connection.readyState;
         const dbStatus = dbState === 1 ? 'connected' : 'disconnected';
@@ -265,44 +291,125 @@ app.get('/', (req, res) => {
     res.render('index');
 });
 
+// Test endpoint
+app.post('/test', (req, res) => {
+    console.log('Test endpoint hit with body:', req.body);
+    res.json({ 
+        success: true, 
+        body: req.body,
+        timestamp: new Date().toISOString()
+    });
+});
+
 // Create a new file
-app.post('/files', async (req, res) => {
+app.post('/files', upload.none(), async (req, res) => {
     try {
-        const fileId = 'FILE-' + Date.now();
-        const serialNumber = await generateSerialNumber();
+        // Ensure database connection for serverless
+        await connectToDatabase();
         
-        const newFile = new File({
-            fileId,
+        // Debug logging (can be removed in production)
+        console.log('Creating new file:', req.body.fileName);
+        
+        // Validate required fields
+        if (!req.body.fileNumber || !req.body.fileName || !req.body.section || !req.body.owner) {
+            return res.status(400).json({ error: 'Missing required fields' });
+        }
+        
+        // Simple duplicate submission prevention
+        const submissionKey = `${req.body.fileNumber}-${req.body.fileName}-${req.body.owner}`;
+        const now = Date.now();
+        const lastSubmission = recentSubmissions.get(submissionKey);
+        
+        if (lastSubmission && (now - lastSubmission) < 5000) { // 5 second window
+            console.log('Duplicate submission detected, ignoring');
+            return res.status(429).json({ error: 'Please wait before submitting again' });
+        }
+        
+        recentSubmissions.set(submissionKey, now);
+        
+        // Clean up old entries (older than 1 minute)
+        for (const [key, timestamp] of recentSubmissions.entries()) {
+            if (now - timestamp > 60000) {
+                recentSubmissions.delete(key);
+            }
+        }
+        
+        const fileId = 'FILE-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
+        let serialNumber;
+        let retryCount = 0;
+        const maxRetries = 3;
+        
+        // Generate unique serial number with retry logic
+        do {
+            serialNumber = await generateSerialNumber(retryCount);
+            retryCount++;
+        } while (retryCount < maxRetries);
+        
+        // Use section as the location since currentLocation field is removed
+        const location = req.body.section || 'Not specified';
+        
+        const fileData = {
+            fileId: fileId,
             fileNumber: req.body.fileNumber,
             serialNumber: serialNumber,
             fileName: req.body.fileName,
-            description: req.body.description,
+            description: req.body.description || '',
             section: req.body.section,
             owner: req.body.owner,
-            currentLocation: req.body.currentLocation,
+            currentLocation: location,
             status: req.body.status || 'Active',
             history: [{
-                location: req.body.currentLocation,
+                location: location,
                 status: req.body.status || 'Active',
                 handler: req.body.owner,
-                section: req.body.section, // Current section for this entry
+                section: req.body.section,
                 notes: 'File created',
                 toSection: req.body.section,
                 fromSection: null,
                 fromLocation: null,
                 fromOfficialName: null
             }]
-        });
-
-        await newFile.save();
+        };
+        
+        // Create file with generated data
+        
+        let newFile;
+        let saveRetryCount = 0;
+        const maxSaveRetries = 3;
+        
+        // Try to save with retry logic for duplicate serial numbers
+        while (saveRetryCount < maxSaveRetries) {
+            try {
+                newFile = new File(fileData);
+                await newFile.save();
+                break; // Success, exit retry loop
+            } catch (saveError) {
+                if (saveError.code === 11000 && saveError.keyPattern && saveError.keyPattern.serialNumber) {
+                    // Duplicate serial number, generate a new one and retry
+                    saveRetryCount++;
+                    console.log(`Duplicate serial number detected, retry ${saveRetryCount}/${maxSaveRetries}`);
+                    
+                    if (saveRetryCount >= maxSaveRetries) {
+                        throw new Error('Failed to generate unique serial number after multiple attempts');
+                    }
+                    
+                    // Generate new serial number and update fileData
+                    fileData.serialNumber = await generateSerialNumber(saveRetryCount);
+                    console.log('New serial number generated:', fileData.serialNumber);
+                } else {
+                    // Different error, don't retry
+                    throw saveError;
+                }
+            }
+        }
         
         // Generate QR code URL for this file with retry logic
         const qrUrl = `${req.protocol}://${req.get('host')}/file/${fileId}`;
         let qrImage;
-        let retryCount = 0;
-        const maxRetries = 3;
+        let qrRetryCount = 0;
+        const maxQrRetries = 3;
         
-        while (retryCount < maxRetries) {
+        while (qrRetryCount < maxQrRetries) {
             try {
                 qrImage = await QRCode.toDataURL(qrUrl, {
                     errorCorrectionLevel: 'M',
@@ -316,13 +423,13 @@ app.post('/files', async (req, res) => {
                 });
                 break; // Success, exit retry loop
             } catch (qrError) {
-                retryCount++;
-                console.error(`QR code generation attempt ${retryCount} failed:`, qrError);
-                if (retryCount >= maxRetries) {
+                qrRetryCount++;
+                console.error(`QR code generation attempt ${qrRetryCount} failed:`, qrError);
+                if (qrRetryCount >= maxQrRetries) {
                     throw new Error('Failed to generate QR code after multiple attempts');
                 }
                 // Wait a bit before retrying
-                await new Promise(resolve => setTimeout(resolve, 100 * retryCount));
+                await new Promise(resolve => setTimeout(resolve, 100 * qrRetryCount));
             }
         }
         
@@ -335,15 +442,22 @@ app.post('/files', async (req, res) => {
         });
     } catch (error) {
         console.error('Error creating file:', error);
+        console.error('Error stack:', error.stack);
+        console.error('Request body:', req.body);
+        
         if (error.code === 11000) {
             // Duplicate key error
             if (error.keyPattern && error.keyPattern.serialNumber) {
-                res.status(400).send('Error: Serial number generation conflict. Please try again.');
+                res.status(400).json({ error: 'Serial number generation conflict. Please try again.' });
             } else {
-                res.status(400).send('Error: File with this information already exists.');
+                res.status(400).json({ error: 'File with this information already exists.' });
             }
+        } else if (error.name === 'ValidationError') {
+            res.status(400).json({ error: 'Validation error: ' + error.message });
+        } else if (error.name === 'MongooseError' || error.name === 'MongoError') {
+            res.status(503).json({ error: 'Database connection error. Please try again.' });
         } else {
-            res.status(500).send('Error creating file');
+            res.status(500).json({ error: 'Error creating file: ' + error.message });
         }
     }
 });
@@ -351,6 +465,9 @@ app.post('/files', async (req, res) => {
 // Get all files with pagination and better performance
 app.get('/files', async (req, res) => {
     try {
+        // Ensure database connection for serverless
+        await connectToDatabase();
+        
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 50; // Limit to 50 files per page
         const skip = (page - 1) * limit;

@@ -22,25 +22,79 @@ document.addEventListener('DOMContentLoaded', function() {
                 event.preventDefault();
                 event.stopPropagation();
             } else {
+                // Special handling for file creation form
+                if (form.action.includes('/files') && form.method.toLowerCase() === 'post') {
+                    event.preventDefault();
+                    handleFileCreation(form);
+                    return;
+                }
+                
                 // Add loading state to submit button
                 const submitBtn = form.querySelector('button[type="submit"], input[type="submit"]');
                 if (submitBtn) {
                     submitBtn.disabled = true;
                     const originalText = submitBtn.textContent || submitBtn.value;
-                    submitBtn.textContent = 'Processing...';
                     submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Processing...';
                     
-                    // Re-enable after 10 seconds as fallback
+                    // Re-enable after 15 seconds as fallback
                     setTimeout(() => {
                         submitBtn.disabled = false;
-                        submitBtn.textContent = originalText;
-                    }, 10000);
+                        submitBtn.innerHTML = originalText;
+                    }, 15000);
                 }
             }
             
             form.classList.add('was-validated');
         });
     });
+    
+    // Handle file creation with better error handling
+    function handleFileCreation(form) {
+        const submitBtn = form.querySelector('button[type="submit"]');
+        const originalText = submitBtn.innerHTML;
+        
+        // Check if already processing to prevent double submission
+        if (submitBtn.disabled || form.dataset.submitting === 'true') {
+            console.log('Form submission already in progress, ignoring duplicate request');
+            return;
+        }
+        
+        // Mark form as submitting
+        form.dataset.submitting = 'true';
+        
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Creating File...';
+        
+        const formData = new FormData(form);
+        
+        fetch('/files', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => {
+            if (!response.ok) {
+                return response.json().then(data => {
+                    throw new Error(data.error || `HTTP ${response.status}: ${response.statusText}`);
+                });
+            }
+            return response.text();
+        })
+        .then(html => {
+            // Success - redirect to the QR code page
+            document.open();
+            document.write(html);
+            document.close();
+        })
+        .catch(error => {
+            console.error('File creation error:', error);
+            alert('Error creating file: ' + error.message + '\n\nPlease check your internet connection and try again.');
+            
+            // Reset form state
+            form.dataset.submitting = 'false';
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = originalText;
+        });
+    }
     
     // Initialize any tooltips
     if (typeof $ !== 'undefined' && typeof $.fn.tooltip !== 'undefined') {
