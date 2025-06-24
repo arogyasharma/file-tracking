@@ -808,6 +808,32 @@ app.post('/admin/cleanup', async (req, res) => {
     }
 });
 
+// Edit file name and file number
+app.post('/file/:fileId/edit', async (req, res) => {
+    try {
+        const { fileId } = req.params;
+        const { fileName, fileNumber } = req.body;
+        const file = await File.findOne({ fileId });
+        if (!file) {
+            return res.status(404).render('error', {
+                message: 'File not found',
+                backLink: '/files'
+            });
+        }
+        // Update file name and file number
+        file.fileName = fileName;
+        file.fileNumber = fileNumber;
+        await file.save();
+        res.redirect(`/file/${fileId}`);
+    } catch (error) {
+        console.error('Error editing file details:', error);
+        res.status(500).render('error', {
+            message: 'Error updating file details. Please try again.',
+            backLink: '/files'
+        });
+    }
+});
+
 // Global error handler middleware
 app.use((error, req, res, next) => {
     console.error('Unhandled error:', error);

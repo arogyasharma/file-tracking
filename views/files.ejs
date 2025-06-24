@@ -26,8 +26,7 @@
                             <th>File Number</th>
                             <th>Serial Number</th>
                             <th>Name</th>
-                            <th>Section</th>
-                            <th>Current Location</th>
+                            <th>Current Section</th>
                             <th>Status</th>
                             <th>Created</th>
                             <th>Actions</th>
@@ -40,7 +39,6 @@
                                 <td><span class="badge badge-secondary"><%= file.serialNumber || 'N/A' %></span></td>
                                 <td><%= file.fileName %></td>
                                 <td><%= file.section %></td>
-                                <td><%= file.currentLocation %></td>
                                 <td>
                                     <span class="badge badge-<%= 
                                         file.status === 'Active' ? 'success' : 
