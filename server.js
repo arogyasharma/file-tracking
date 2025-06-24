@@ -812,7 +812,14 @@ app.post('/admin/cleanup', async (req, res) => {
 app.post('/file/:fileId/edit', async (req, res) => {
     try {
         const { fileId } = req.params;
-        const { fileName, fileNumber } = req.body;
+        const { fileName, fileNumber, editPassword } = req.body;
+        const EDIT_PASSWORD = process.env.EDIT_PASSWORD || 'change123'; // Set your password here or via env
+        if (editPassword !== EDIT_PASSWORD) {
+            return res.status(403).render('error', {
+                message: 'Incorrect password. You are not authorized to edit this file.',
+                backLink: `/file/${fileId}`
+            });
+        }
         const file = await File.findOne({ fileId });
         if (!file) {
             return res.status(404).render('error', {
