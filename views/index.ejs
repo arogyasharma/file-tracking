@@ -67,6 +67,11 @@
                         <label for="date">Date</label>
                         <input type="date" class="form-control" id="date" name="date" required>
                     </div>
+                    <div class="form-group">
+                        <label for="createPassword">Password*</label>
+                        <input type="password" class="form-control" id="createPassword" name="createPassword" placeholder="Enter password to create file" required>
+                        <small class="form-text text-muted">Password required to create a file. Contact admin if you do not know it.</small>
+                    </div>
                     <button type="submit" class="btn btn-primary">Create File & Generate QR Code</button>
                 </form>
             </div>
@@ -105,7 +110,7 @@
 <%- include('partials/footer') %>
 
 <script>
-// Auto-fill date field with today's date
+// Auto-fill date field with today's date (arogya & dinesh 2k25)
 document.addEventListener('DOMContentLoaded', function() {
     const dateInput = document.getElementById('date');
     if (dateInput) {

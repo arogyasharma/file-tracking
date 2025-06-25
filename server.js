@@ -384,8 +384,14 @@ app.post('/files', upload.none(), async (req, res) => {
         console.log('Creating new file:', req.body.fileName);
         
         // Validate required fields
-        if (!req.body.fileNumber || !req.body.fileName || !req.body.section || !req.body.owner) {
+        if (!req.body.fileNumber || !req.body.fileName || !req.body.section || !req.body.owner || !req.body.createPassword) {
             return res.status(400).json({ error: 'Missing required fields' });
+        }
+        
+        // Check password for file creation
+        const CREATE_PASSWORD = 'change@123';
+        if (req.body.createPassword !== CREATE_PASSWORD) {
+            return res.status(403).json({ error: 'Incorrect password. You are not authorized to create a file.' });
         }
         
         // Check for duplicate file number with timeout
@@ -661,6 +667,15 @@ app.post('/file/:fileId/update', async (req, res) => {
                 backLink: `/file/${req.params.fileId}`
             });
         }
+
+        // Password check for status update
+        const STATUS_PASSWORD = 'change@123';
+        if (!req.body.statusPassword || req.body.statusPassword !== STATUS_PASSWORD) {
+            return res.status(403).render('error', {
+                message: 'Incorrect password. You are not authorized to update the file status.',
+                backLink: `/file/${req.params.fileId}`
+            });
+        }
         
         const file = await File.findOne({ fileId: req.params.fileId });
         if (!file) {
@@ -813,7 +828,7 @@ app.post('/file/:fileId/edit', async (req, res) => {
     try {
         const { fileId } = req.params;
         const { fileName, fileNumber, editPassword } = req.body;
-        const EDIT_PASSWORD = process.env.EDIT_PASSWORD || 'change123'; // Set your password here or via env
+        const EDIT_PASSWORD = 'change@123'; // Set your password here
         if (editPassword !== EDIT_PASSWORD) {
             return res.status(403).render('error', {
                 message: 'Incorrect password. You are not authorized to edit this file.',
